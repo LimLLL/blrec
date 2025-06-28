@@ -148,3 +148,6 @@ _*/
 
 # PyCharm
 .idea/
+
+setting.toml
+test

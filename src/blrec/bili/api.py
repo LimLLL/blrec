@@ -294,7 +294,8 @@ class WebApi(BaseApi):
         json_res = await self._get_json(self.base_api_urls, path, params=params)
         return json_res['data']
 
-    async def get_danmu_info(self, room_id: int, cookie: str) -> ResponseData:
+    async def get_danmu_info(self, room_id: int) -> ResponseData:
+        cookie = self.headers.get('Cookie', '')
         path = '/xlive/web-room/v1/index/getDanmuInfo'
         params = {
             'id': room_id,
@@ -303,8 +304,13 @@ class WebApi(BaseApi):
         w_rid, wts = wbi_sign_params(params.copy(), cookie)
         params["w_rid"] = w_rid
         params["wts"] = wts
+        if cookie != '' and 'buvid3' not in cookie:
+            buvid3, buvid4 = get_buvid(cookie)
+            self.headers['Cookie'] += f'; buvid3={buvid3}'
+
         json_res = await self._get_json(self.base_live_api_urls, path, params=params)
         return json_res['data']
+
 
     async def get_nav(self) -> ResponseData:
         path = '/x/web-interface/nav'
@@ -365,3 +371,26 @@ def wbi_sign_params(params: dict, cookie: str) -> str:
     img_key, sub_key = getWbiKeys(cookie)
     signed_params = encWbi(params, img_key, sub_key)
     return signed_params["w_rid"], signed_params["wts"]
+
+
+def get_buvid(cookie: str) -> str:
+    """
+    从 https://api.bilibili.com/x/frontend/finger/spi 中获取 buvid3
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+        'Referer': 'https://www.bilibili.com/',
+        'Cookie': cookie,  # 使用传入的 cookie
+    }
+    resp = requests.get('https://api.bilibili.com/x/frontend/finger/spi', headers=headers)
+    resp.raise_for_status()
+    json_content = resp.json()
+    if json_content['code'] != 0:
+        raise ValueError("Failed to retrieve buvid3")
+    buvid3 = json_content['data']['b_3']
+    buvid4 = json_content['data'].get('b_4')
+    if not buvid3:
+        raise ValueError("Response does not contain 'buvid3'")
+    if not buvid4:
+        raise ValueError("Response does not contain 'buvid4'")
+    return buvid3, buvid4
